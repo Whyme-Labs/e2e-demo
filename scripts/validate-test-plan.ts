@@ -66,6 +66,13 @@ export function validateTestPlan(plan: any): ValidationResult {
             });
           }
 
+          if (step.action === "select" && (!step.value || step.value.trim() === "")) {
+            errors.push({
+              path: `${stepPath}.value`,
+              message: `Select action in step ${i + 1} of "${scenario.id}" requires a value`,
+            });
+          }
+
           if (step.action === "press" && (!step.key || step.key.trim() === "")) {
             errors.push({
               path: `${stepPath}.key`,

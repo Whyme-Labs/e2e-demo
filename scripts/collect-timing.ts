@@ -1,5 +1,5 @@
 import type { TimingEntry, ErrorLogEntry } from "../templates/remotion/src/types.js";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 
 interface WaitOptions {
@@ -18,10 +18,24 @@ interface FillOptions extends ClickOptions {
   value: string;
 }
 
+interface SelectOptions extends WaitOptions {
+  wait_for: string;
+  value: string;
+}
+
+interface PressOptions extends WaitOptions {
+  wait_for: string;
+  key: string;
+}
+
 export interface TimingCollector {
   timedWait(opts: WaitOptions): Promise<void>;
   timedClick(opts: ClickOptions): Promise<void>;
   timedFill(opts: FillOptions): Promise<void>;
+  timedSelect(opts: SelectOptions): Promise<void>;
+  timedHover(opts: WaitOptions & { wait_for: string }): Promise<void>;
+  timedScroll(opts: WaitOptions & { wait_for: string }): Promise<void>;
+  timedPress(opts: PressOptions): Promise<void>;
   getTimingEntries(): TimingEntry[];
   getErrorEntries(): ErrorLogEntry[];
   flushToFiles(timingPath: string, errorLogPath: string): void;
@@ -153,6 +167,61 @@ export function createTimingCollector(
       );
     },
 
+    async timedSelect(opts: SelectOptions) {
+      await recordTiming(
+        opts.step,
+        opts.step_id,
+        opts.description,
+        async () => {
+          await page.selectOption(opts.selector, opts.value);
+          await page.waitForSelector(opts.wait_for).then(() => {});
+        },
+        opts.screenshot
+      );
+    },
+
+    async timedHover(opts: WaitOptions & { wait_for: string }) {
+      await recordTiming(
+        opts.step,
+        opts.step_id,
+        opts.description,
+        async () => {
+          await page.hover(opts.selector);
+          await page.waitForSelector(opts.wait_for).then(() => {});
+        },
+        opts.screenshot
+      );
+    },
+
+    async timedScroll(opts: WaitOptions & { wait_for: string }) {
+      await recordTiming(
+        opts.step,
+        opts.step_id,
+        opts.description,
+        async () => {
+          const locator = page.locator ? page.locator(opts.selector) : null;
+          if (locator?.scrollIntoViewIfNeeded) {
+            await locator.scrollIntoViewIfNeeded();
+          }
+          await page.waitForSelector(opts.wait_for).then(() => {});
+        },
+        opts.screenshot
+      );
+    },
+
+    async timedPress(opts: PressOptions) {
+      await recordTiming(
+        opts.step,
+        opts.step_id,
+        opts.description,
+        async () => {
+          await page.press(opts.selector, opts.key);
+          await page.waitForSelector(opts.wait_for).then(() => {});
+        },
+        opts.screenshot
+      );
+    },
+
     getTimingEntries() {
       return [...timingEntries];
     },
@@ -164,8 +233,16 @@ export function createTimingCollector(
     flushToFiles(timingPath: string, errorLogPath: string) {
       mkdirSync(dirname(timingPath), { recursive: true });
       mkdirSync(dirname(errorLogPath), { recursive: true });
-      writeFileSync(timingPath, JSON.stringify(timingEntries, null, 2));
-      writeFileSync(errorLogPath, JSON.stringify(errorEntries, null, 2));
+
+      const existingTiming = existsSync(timingPath)
+        ? JSON.parse(readFileSync(timingPath, "utf-8"))
+        : [];
+      writeFileSync(timingPath, JSON.stringify([...existingTiming, ...timingEntries], null, 2));
+
+      const existingErrors = existsSync(errorLogPath)
+        ? JSON.parse(readFileSync(errorLogPath, "utf-8"))
+        : [];
+      writeFileSync(errorLogPath, JSON.stringify([...existingErrors, ...errorEntries], null, 2));
     },
   };
 }
