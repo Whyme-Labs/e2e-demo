@@ -1,6 +1,7 @@
 ---
 name: e2e-demo
 description: Use when running E2E tests on a web app and producing demo videos or user manual documentation. Triggers include requests to test user flows end-to-end, generate demo recordings, create user guides from testing, or QA a web application with visual artifacts.
+version: 1.0.0
 ---
 
 # E2E Demo
@@ -87,7 +88,7 @@ Read `reference/auth-bypass-patterns.md` for common strategies.
    - Skips OTP verification for debug email
    - Bypasses captcha validation
    - Uses hardcoded debug credentials
-2. Produce a **revert checklist** (JSON array of `RevertEntry` objects — see types.ts)
+2. Produce a **revert checklist** (JSON array of `RevertEntry` objects — see `templates/remotion/src/types.ts`)
 3. Present changes to user and **wait for approval**
 4. Apply approved changes
 
@@ -98,7 +99,7 @@ Read `reference/auth-bypass-patterns.md` for common strategies.
 3. Run: `npx tsx <skill-dir>/scripts/validate-test-plan.ts test-plan.json`
 4. Present test plan to user and **wait for approval**
 
-See `reference/timing-data-format.md` for the test plan JSON schema.
+See `reference/timing-data-format.md` for data schemas and `templates/remotion/src/types.ts` for the test plan TypeScript interfaces (`TestPlan`, `TestScenario`, `TestPlanStep`).
 
 ---
 

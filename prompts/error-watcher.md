@@ -14,8 +14,10 @@ You do NOT share the Playwright browser instance. The test executor writes error
 
 ## Monitoring Loop
 
+Use `fs.watchFile('e2e/error-log.json', { interval: 2000 }, callback)` or periodically read the file. This is file-based monitoring — the "no static waits" rule applies to browser interactions, not to file polling.
+
 ```
-Every 2 seconds:
+When error-log.json changes:
   1. Read e2e/error-log.json
   2. Check for new entries since last read
   3. Evaluate each new entry:

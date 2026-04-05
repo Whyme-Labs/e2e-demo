@@ -30,4 +30,4 @@ echo "Installing Remotion dependencies..."
 npm install
 
 echo "Remotion scaffold complete at $TARGET"
-echo "  Render with: cd $TARGET && npx remotion render TestVideo e2e/output/demo-full.mp4"
+echo "  Render with: cd $TARGET && npx remotion render TestVideo ../../output/demo-full.mp4"

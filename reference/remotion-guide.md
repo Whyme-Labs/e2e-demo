@@ -77,6 +77,8 @@ Write as continuous prose, not a list of steps.
 
 ### 2. Generate Audio with Qwen TTS
 
+> **Note:** The code below is a conceptual example. Verify the actual API for the Qwen TTS model version you are using — the HuggingFace Transformers API may differ. Consult the model card for the correct inference method.
+
 ```bash
 python -c "
 from transformers import AutoModelForCausalLM, AutoTokenizer

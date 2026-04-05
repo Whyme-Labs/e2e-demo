@@ -1,4 +1,51 @@
-# Timing Data & Test Report Format
+# Data Formats
+
+## Test Plan JSON
+
+The test plan is the input to Phase 2. Full TypeScript interfaces are in `templates/remotion/src/types.ts`.
+
+```json
+{
+  "scenarios": [
+    {
+      "id": "auth-flow",
+      "name": "Authentication Flow",
+      "description": "Login with debug user, verify dashboard loads",
+      "steps": [
+        {
+          "action": "navigate | click | fill | select | hover | scroll | press",
+          "target": "CSS selector or URL",
+          "wait_for": "CSS selector to wait for after action",
+          "screenshot": true,
+          "description": "Human-readable step description",
+          "value": "(required for fill/select actions)",
+          "key": "(required for press action)"
+        }
+      ]
+    }
+  ],
+  "config": {
+    "base_url": "http://localhost:3000",
+    "viewport": { "width": 1280, "height": 720 },
+    "video": true,
+    "voiceover": false
+  }
+}
+```
+
+### Valid Actions
+
+| Action | Required Fields | Playwright Call |
+|--------|----------------|-----------------|
+| `navigate` | target (URL), wait_for | `page.goto()` (initial only) |
+| `click` | target, wait_for | `page.click()` |
+| `fill` | target, wait_for, **value** | `page.fill()` |
+| `select` | target, wait_for, **value** | `page.selectOption()` |
+| `hover` | target, wait_for | `page.hover()` |
+| `scroll` | target, wait_for | `locator.scrollIntoViewIfNeeded()` |
+| `press` | target, wait_for, **key** | `page.press()` |
+
+---
 
 ## timing-data.json
 
