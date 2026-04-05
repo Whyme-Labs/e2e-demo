@@ -1,0 +1,17 @@
+{
+  "name": "e2e-demo-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  },
+  "dependencies": {
+    "playwright": "^1.50.0"
+  }
+}
