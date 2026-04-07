@@ -9,6 +9,22 @@ A Claude Code skill that runs E2E tests on web apps using Playwright and produce
 3. **Produces** — compiles recordings into a demo video (Remotion) and writes a markdown user manual
 4. **Cleans up** — reverts auth bypass, restores production security
 
+## Installation
+
+### User-level (available in all projects)
+
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/Whyme-Labs/e2e-demo.git ~/.claude/skills/e2e-demo
+```
+
+### Project-level (available only in this project)
+
+```bash
+mkdir -p .claude/skills
+git clone https://github.com/Whyme-Labs/e2e-demo.git .claude/skills/e2e-demo
+```
+
 ## Usage
 
 Tell Claude to test your web app:
