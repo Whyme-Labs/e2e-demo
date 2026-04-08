@@ -11,14 +11,28 @@ A Claude Code skill that runs E2E tests on web apps using Playwright and produce
 
 ## Installation
 
-### User-level (available in all projects)
+### npx (recommended)
+
+```bash
+npx skills add Whyme-Labs/e2e-demo
+```
+
+Or install globally (available in all projects):
+
+```bash
+npx skills add -g Whyme-Labs/e2e-demo
+```
+
+### Manual (git clone)
+
+**User-level** (available in all projects):
 
 ```bash
 mkdir -p ~/.claude/skills
 git clone https://github.com/Whyme-Labs/e2e-demo.git ~/.claude/skills/e2e-demo
 ```
 
-### Project-level (available only in this project)
+**Project-level** (available only in this project):
 
 ```bash
 mkdir -p .claude/skills

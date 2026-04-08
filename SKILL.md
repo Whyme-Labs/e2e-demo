@@ -1,7 +1,10 @@
 ---
 name: e2e-demo
 description: Use when running E2E tests on a web app and producing demo videos or user manual documentation. Triggers include requests to test user flows end-to-end, generate demo recordings, create user guides from testing, or QA a web application with visual artifacts.
-version: 1.0.0
+license: MIT
+metadata:
+  author: sohweimeng
+  version: "1.0.0"
 ---
 
 # E2E Demo
