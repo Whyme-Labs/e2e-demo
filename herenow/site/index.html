@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Claim Interlock — Product Pack</title>
+  <meta name="description" content="Claim Interlock product dossier, research, simulation findings, architecture, hackathon plan, and interactive MVP." />
+  <style>
+    :root{--bg:#08100f;--panel:#0f1b19;--panel2:#122421;--ink:#edf8f4;--muted:#a7bbb4;--line:#29403b;--accent:#74f0c2;--accent2:#f0c874;--danger:#ff8e84;--shadow:0 24px 80px rgba(0,0,0,.35)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 20% 0%,#15332b 0,transparent 34%),radial-gradient(circle at 90% 18%,#2a2716 0,transparent 28%),var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+    a{color:inherit}.wrap{width:min(1160px,calc(100% - 36px));margin:auto}.nav{display:flex;justify-content:space-between;align-items:center;padding:24px 0}.brand{font-weight:800;letter-spacing:-.03em}.pill{border:1px solid var(--line);border-radius:999px;padding:7px 12px;color:var(--muted);font-size:13px;background:rgba(15,27,25,.7)}
+    .hero{padding:72px 0 54px}.eyebrow{color:var(--accent);font-weight:750;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.hero h1{font-size:clamp(48px,8vw,92px);line-height:.95;letter-spacing:-.065em;margin:18px 0 24px;max-width:980px}.hero p{font-size:clamp(18px,2vw,24px);color:var(--muted);max-width:850px;margin:0 0 34px}.actions{display:flex;flex-wrap:wrap;gap:12px}.btn{display:inline-flex;align-items:center;gap:10px;text-decoration:none;border-radius:14px;padding:14px 18px;font-weight:750;border:1px solid var(--line);background:var(--panel);transition:.18s transform,.18s border-color}.btn:hover{transform:translateY(-2px);border-color:var(--accent)}.btn.primary{background:var(--accent);color:#062018;border-color:var(--accent)}.btn.secondary{background:var(--accent2);color:#241c06;border-color:var(--accent2)}
+    .proof{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:28px 0 76px}.metric{background:linear-gradient(150deg,rgba(18,36,33,.95),rgba(10,20,18,.9));border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:var(--shadow)}.metric b{font-size:28px;display:block;letter-spacing:-.04em}.metric span{color:var(--muted);font-size:13px}
+    section{padding:52px 0}.section-head{display:grid;grid-template-columns:.7fr 1.3fr;gap:36px;margin-bottom:26px}.section-head h2{font-size:clamp(30px,4vw,52px);letter-spacing:-.045em;line-height:1.05;margin:0}.section-head p{color:var(--muted);font-size:18px;margin:4px 0 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:rgba(15,27,25,.9);border:1px solid var(--line);border-radius:20px;padding:24px;box-shadow:var(--shadow)}.card h3{margin:0 0 10px;font-size:20px}.card p{color:var(--muted);margin:0}.card .tag{display:inline-block;color:var(--accent);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;margin-bottom:12px}
+    .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;counter-reset:step}.step{counter-increment:step;position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:19px}.step:before{content:counter(step);display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:#062018;font-weight:900;margin-bottom:14px}.step b{display:block;margin-bottom:6px}.step span{color:var(--muted);font-size:13px}
+    .warning{border-left:4px solid var(--danger);background:rgba(255,142,132,.08);padding:20px 22px;border-radius:0 16px 16px 0;color:#f7d4d0;margin-top:20px}.download{display:grid;grid-template-columns:1.25fr .75fr;gap:18px;background:linear-gradient(135deg,#17362e,#201e11);border:1px solid #46645b;border-radius:28px;padding:34px;box-shadow:var(--shadow)}.download h2{font-size:clamp(32px,5vw,58px);letter-spacing:-.05em;line-height:1;margin:0 0 16px}.download p{color:var(--muted);max-width:700px}.download-side{display:flex;flex-direction:column;justify-content:center;gap:10px}.fine{color:var(--muted);font-size:12px}.footer{padding:64px 0 38px;color:var(--muted);display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);margin-top:58px}
+    @media(max-width:880px){.proof,.grid{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr 1fr}.section-head,.download{grid-template-columns:1fr}.hero{padding-top:42px}}
+    @media(max-width:560px){.proof,.grid,.flow{grid-template-columns:1fr}.nav .pill{display:none}.hero h1{font-size:54px}.footer{flex-direction:column}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav"><div class="brand">CLAIM INTERLOCK</div><div class="pill">Fortified Enterprise Fleet · Product Pack v1.0</div></nav>
+    <header class="hero">
+      <div class="eyebrow">Secure cross-company agent coordination</div>
+      <h1>Resolve the exact blocker. Preserve every boundary.</h1>
+      <p>A research-backed product pack for a governed multi-agent system that advances stalled motor claims without giving one central AI everyone’s data, credentials, or authority.</p>
+      <div class="actions">
+        <a class="btn primary" href="mvp/index.html">Launch interactive MVP →</a>
+        <a class="btn secondary" href="VALIDATION_REPORT.md">Read validation report</a>
+        <a class="btn" href="https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk" target="_blank" rel="noopener">Download complete pack · 14 MB</a>
+      </div>
+    </header>
+    <div class="proof">
+      <div class="metric"><b>1</b><span>stalled claim, deliberately narrow demo</span></div>
+      <div class="metric"><b>3</b><span>institution-scoped agents with separate authority</span></div>
+      <div class="metric"><b>0</b><span>duplicate actions after injected crash and replay</span></div>
+      <div class="metric"><b>1</b><span>irreversible transition retained for human approval</span></div>
+    </div>
+    <section>
+      <div class="section-head"><h2>What we are building</h2><p>Claim Interlock turns a vague stalled state into a typed blocker: the unresolved fact, the responsible institution, the minimum sufficient evidence, and the action boundary that must not be crossed.</p></div>
+      <div class="grid">
+        <article class="card"><span class="tag">Utility</span><h3>Blocker intelligence</h3><p>Diagnoses why the next valid state transition cannot occur, rather than summarising the entire case again.</p></article>
+        <article class="card"><span class="tag">Architecture</span><h3>Institutional agents</h3><p>Insurer, workshop and adjuster agents retain independent identities, private data, tools and legal authority.</p></article>
+        <article class="card"><span class="tag">Safety</span><h3>Deterministic action gate</h3><p>Gemini may interpret and propose. A non-LLM policy layer authorises case-, resource- and action-scoped mutations.</p></article>
+        <article class="card"><span class="tag">Privacy</span><h3>Minimum disclosure</h3><p>Requests the smallest attestation needed for the current blocker instead of copying every underlying document.</p></article>
+        <article class="card"><span class="tag">Reliability</span><h3>Durable execution</h3><p>Event ledger, idempotency keys and action receipts allow recovery without duplicated notices, tasks or approvals.</p></article>
+        <article class="card"><span class="tag">Control</span><h3>Human authority</h3><p>Coverage denial, settlement, payment and repair authorisation remain explicitly gated by an authorised reviewer.</p></article>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>The four-minute proof</h2><p>The submission is designed around observable state change—not a generic agent conversation or a claims dashboard.</p></div>
+      <div class="flow">
+        <div class="step"><b>Diagnose</b><span>Construct the blocker graph for one stalled repair authorisation.</span></div>
+        <div class="step"><b>Request</b><span>Ask each institution only for its minimum authorised evidence.</span></div>
+        <div class="step"><b>Defend</b><span>Accept valid evidence while denying an embedded approval attempt.</span></div>
+        <div class="step"><b>Recover</b><span>Kill the coordinator, replay the event and suppress duplication.</span></div>
+        <div class="step"><b>Escalate</b><span>Advance to approval-ready, then stop at the human boundary.</span></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>What the experiments actually found</h2><p>The pack preserves adverse evidence. Large efficiency gains did not justify autonomous progression when diagnosis quality was insufficient.</p></div>
+      <div class="grid">
+        <article class="card"><span class="tag">Supported</span><h3>Internal navigator first</h3><p>Most simulated handling-time improvement came from exact blocker diagnosis before any federated network effect.</p></article>
+        <article class="card"><span class="tag">Conditional</span><h3>Federation is not always faster</h3><p>Its robust benefits are minimum disclosure, separation of authority and data sovereignty. Speed depends on endpoint reliability and acceptance.</p></article>
+        <article class="card"><span class="tag">Kill criterion</span><h3>False-ready risk</h3><p>At 84% modeled blocker recall, the system improved effort and latency but regressed safety. The MVP is therefore governed and human-supervised.</p></article>
+      </div>
+      <div class="warning"><strong>Explicit non-claim:</strong> this prototype does not autonomously deny coverage, determine fraud, set settlement amounts, approve payment or replace professional motor-loss assessment.</div>
+    </section>
+    <section class="download">
+      <div><div class="eyebrow">Complete archive</div><h2>Research, plans, findings, deck, dossier and code.</h2><p>The 14 MB ZIP contains the consolidated dossier, pitch deck, one-pager, runnable MVP, raw simulation outputs, research archive, threat model, schemas, Agent Cards, demo script, governance documents and validation report.</p></div>
+      <div class="download-side">
+        <a class="btn primary" href="https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk" target="_blank" rel="noopener">Open full ZIP in Drive →</a>
+        <a class="btn" href="VALIDATION_REPORT.md">Read validation report</a>
+        <span class="fine">The public preview and MVP are served directly by here.now. The complete binary archive is mirrored in the owner’s Google Drive and may request sign-in until its Drive sharing policy is changed.</span>
+      </div>
+    </section>
+    <footer class="footer"><span>Claim Interlock · Product Pack v1.0</span><span>Built for All Things Agentic · Fortified Enterprise Fleet</span></footer>
+  </div>
+</body>
+</html>
