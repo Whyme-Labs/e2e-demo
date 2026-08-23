@@ -15,22 +15,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download current pack source
+      - name: Test Google Drive download with gdown
         shell: bash
         run: |
           set -uo pipefail
+          rm -rf herenow/download-test
           mkdir -p herenow/download-test
-          URL='https://drive.usercontent.google.com/download?id=15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b&export=download&confirm=t'
-          HTTP=$(curl -L --retry 2 --connect-timeout 20 --max-time 180 -sS -w '%{http_code}' -o herenow/download-test/payload.bin "$URL" || true)
+          python3 -m pip install --quiet gdown
+          set +e
+          gdown 'https://drive.google.com/uc?id=15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b' -O herenow/download-test/payload.bin > herenow/download-test/gdown.log 2>&1
+          STATUS=$?
+          set -e
           SIZE=$(stat -c '%s' herenow/download-test/payload.bin 2>/dev/null || echo 0)
           MIME=$(file -b --mime-type herenow/download-test/payload.bin 2>/dev/null || echo unknown)
           SHA=$(sha256sum herenow/download-test/payload.bin 2>/dev/null | awk '{print $1}')
           {
-            echo "http=$HTTP"
+            echo "status=$STATUS"
             echo "size=$SIZE"
             echo "mime=$MIME"
             echo "sha256=$SHA"
           } > herenow/download-test/result.txt
+          tail -n 30 herenow/download-test/gdown.log > herenow/download-test/gdown_tail.txt || true
           head -c 16 herenow/download-test/payload.bin | xxd -p > herenow/download-test/head.hex || true
           rm -f herenow/download-test/payload.bin
       - name: Persist result
@@ -39,5 +44,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add herenow/download-test
-          git commit -m 'test: record Claim Interlock pack download result' || exit 0
+          git commit -m 'test: record gdown result for Claim Interlock pack' || exit 0
           git push origin HEAD:herenow-claim-interlock-pack
