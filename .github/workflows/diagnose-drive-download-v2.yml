@@ -1,0 +1,67 @@
+name: Diagnose public Drive ZIP download v2
+
+on:
+  push:
+    branches: [herenow-claim-interlock-pack]
+    paths: ['.github/workflows/diagnose-drive-download-v2.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and inspect confirmation page
+        shell: bash
+        continue-on-error: true
+        run: |
+          rm -rf herenow/drive-diagnostic-v2
+          mkdir -p herenow/drive-diagnostic-v2
+          python3 - <<'PY'
+          import json, re, urllib.parse, urllib.request, http.cookiejar, hashlib, mimetypes
+          from pathlib import Path
+          out = Path('herenow/drive-diagnostic-v2')
+          fid = '15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b'
+          jar = http.cookiejar.CookieJar()
+          opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+          url = f'https://drive.google.com/uc?export=download&id={fid}'
+          report = {'initial_url': url}
+          try:
+              r = opener.open(url, timeout=120)
+              body = r.read()
+              report.update({'initial_final_url': r.geturl(), 'initial_status': getattr(r,'status',None), 'initial_content_type': r.headers.get('content-type'), 'initial_size': len(body), 'initial_sha256': hashlib.sha256(body).hexdigest()})
+              text = body.decode('utf-8','replace')
+              forms = []
+              for fm in re.finditer(r'<form\b[^>]*action=["\']([^"\']+)["\'][^>]*>(.*?)</form>', text, re.I|re.S):
+                  action, inner = fm.group(1), fm.group(2)
+                  fields = {}
+                  for im in re.finditer(r'<input\b[^>]*name=["\']([^"\']+)["\'][^>]*value=["\']([^"\']*)["\'][^>]*>', inner, re.I|re.S):
+                      fields[im.group(1)] = im.group(2)
+                  forms.append({'action': action, 'fields': fields})
+              report['forms'] = forms
+              out.joinpath('page_excerpt.html').write_text(text[:50000], encoding='utf-8')
+              if forms:
+                  f = forms[0]
+                  action = urllib.parse.urljoin(r.geturl(), f['action'])
+                  target = action + ('&' if '?' in action else '?') + urllib.parse.urlencode(f['fields'])
+                  report['submit_url_redacted'] = re.sub(r'([?&](?:uuid|at)=[^&]+)', r'\1', target)
+                  rr = opener.open(target, timeout=180)
+                  payload = rr.read()
+                  report.update({'submit_final_url': rr.geturl(), 'submit_status': getattr(rr,'status',None), 'submit_content_type': rr.headers.get('content-type'), 'submit_size': len(payload), 'submit_sha256': hashlib.sha256(payload).hexdigest(), 'submit_magic_hex': payload[:16].hex()})
+                  if payload.startswith(b'PK\x03\x04'):
+                      out.joinpath('download_success.txt').write_text('zip=true\nsize=%d\nsha256=%s\n' % (len(payload), hashlib.sha256(payload).hexdigest()))
+          except Exception as e:
+              report['error'] = repr(e)
+          out.joinpath('report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+          PY
+      - name: Persist diagnostics
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add herenow/drive-diagnostic-v2
+          git commit -m 'test: record Drive download diagnostics v2' || exit 0
+          git push origin HEAD:herenow-claim-interlock-pack
