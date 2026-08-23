@@ -1,0 +1,65 @@
+name: Publish Claim Interlock pack to here.now
+
+on:
+  push:
+    branches:
+      - herenow-claim-interlock-pack
+    paths:
+      - '.github/workflows/publish-claim-interlock-herenow.yml'
+      - 'herenow/publish.py'
+      - 'herenow/claim_public.pem'
+      - 'herenow/site/**'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out staging branch
+        uses: actions/checkout@v4
+
+      - name: Publish anonymous here.now site
+        run: python3 herenow/publish.py
+
+      - name: Protect the one-time claim URL
+        shell: bash
+        run: |
+          mkdir -p herenow/result
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('herenow/publish_result.json').read_text())
+          Path('herenow/result/site_url.txt').write_text(r['siteUrl'] + '\n')
+          Path('herenow/result/expires_at.txt').write_text(str(r.get('expiresAt', '')) + '\n')
+          Path('herenow/result/claim_url.txt').write_text(r.get('claimUrl', ''))
+          public = {k: r.get(k) for k in ('slug','siteUrl','expiresAt','anonymous','warning')}
+          Path('herenow/result/public_result.json').write_text(json.dumps(public, indent=2) + '\n')
+          PY
+          openssl pkeyutl -encrypt -pubin \
+            -inkey herenow/claim_public.pem \
+            -pkeyopt rsa_padding_mode:oaep \
+            -pkeyopt rsa_oaep_md:sha256 \
+            -in herenow/result/claim_url.txt \
+            -out herenow/result/claim_url.enc
+          rm -f herenow/result/claim_url.txt herenow/publish_result.json
+          echo "### Claim Interlock published" >> "$GITHUB_STEP_SUMMARY"
+          echo "$(cat herenow/result/site_url.txt)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload encrypted publication receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: claim-interlock-herenow-result
+          path: herenow/result/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Persist public URL and encrypted claim token on staging branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add herenow/result
+          git commit -m "chore: record Claim Interlock here.now publication" || exit 0
+          git push origin HEAD:herenow-claim-interlock-pack || true
