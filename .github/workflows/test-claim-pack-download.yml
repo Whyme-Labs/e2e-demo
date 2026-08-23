@@ -1,0 +1,43 @@
+name: Test Claim Interlock pack download
+
+on:
+  push:
+    branches:
+      - herenow-claim-interlock-pack
+    paths:
+      - '.github/workflows/test-claim-pack-download.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  test-download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download current pack source
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p herenow/download-test
+          URL='https://drive.usercontent.google.com/download?id=15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b&export=download&confirm=t'
+          HTTP=$(curl -L --retry 2 --connect-timeout 20 --max-time 180 -sS -w '%{http_code}' -o herenow/download-test/payload.bin "$URL" || true)
+          SIZE=$(stat -c '%s' herenow/download-test/payload.bin 2>/dev/null || echo 0)
+          MIME=$(file -b --mime-type herenow/download-test/payload.bin 2>/dev/null || echo unknown)
+          SHA=$(sha256sum herenow/download-test/payload.bin 2>/dev/null | awk '{print $1}')
+          {
+            echo "http=$HTTP"
+            echo "size=$SIZE"
+            echo "mime=$MIME"
+            echo "sha256=$SHA"
+          } > herenow/download-test/result.txt
+          head -c 16 herenow/download-test/payload.bin | xxd -p > herenow/download-test/head.hex || true
+          rm -f herenow/download-test/payload.bin
+      - name: Persist result
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add herenow/download-test
+          git commit -m 'test: record Claim Interlock pack download result' || exit 0
+          git push origin HEAD:herenow-claim-interlock-pack
