@@ -20,12 +20,33 @@ jobs:
       - name: Check out staging branch
         uses: actions/checkout@v4
 
+      - name: Attach the complete product-pack ZIP directly to the site
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet gdown
+          gdown --fuzzy 'https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk' \
+            -O herenow/site/Claim_Interlock_Product_Pack_v1.0.zip
+          echo 'e0f1f116ec3e5eee3b0ed7e7a6dd905d45e47115b9a8f7372cc09ca8ad7793f9  herenow/site/Claim_Interlock_Product_Pack_v1.0.zip' | sha256sum -c -
+          test "$(stat -c '%s' herenow/site/Claim_Interlock_Product_Pack_v1.0.zip)" = '13644242'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('herenow/site/index.html')
+          s = p.read_text(encoding='utf-8')
+          drive = 'https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk'
+          s = s.replace(drive, './Claim_Interlock_Product_Pack_v1.0.zip')
+          s = s.replace('Open full ZIP in Drive →', 'Download full ZIP directly →')
+          s = s.replace('The public preview and MVP are served directly by here.now. The complete binary archive is mirrored in the owner’s Google Drive and may request sign-in until its Drive sharing policy is changed.', 'The complete 14 MB archive is hosted directly on this here.now site. No Google Drive or third-party sign-in is required.')
+          p.write_text(s, encoding='utf-8')
+          PY
+
       - name: Publish anonymous here.now site
         run: python3 herenow/publish.py
 
       - name: Protect the one-time claim URL
         shell: bash
         run: |
+          rm -rf herenow/result
           mkdir -p herenow/result
           python3 - <<'PY'
           import json
@@ -44,7 +65,7 @@ jobs:
             -in herenow/result/claim_url.txt \
             -out herenow/result/claim_url.enc
           rm -f herenow/result/claim_url.txt herenow/publish_result.json
-          echo "### Claim Interlock published" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Claim Interlock published with direct ZIP" >> "$GITHUB_STEP_SUMMARY"
           echo "$(cat herenow/result/site_url.txt)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload encrypted publication receipt
@@ -61,5 +82,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add herenow/result
-          git commit -m "chore: record Claim Interlock here.now publication" || exit 0
+          git commit -m "chore: record direct-ZIP Claim Interlock here.now publication" || exit 0
           git push origin HEAD:herenow-claim-interlock-pack || true
