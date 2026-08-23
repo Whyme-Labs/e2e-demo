@@ -24,20 +24,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet gdown
-          gdown --fuzzy 'https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk' \
-            -O herenow/site/Claim_Interlock_Product_Pack_v1.0.zip
-          echo 'e0f1f116ec3e5eee3b0ed7e7a6dd905d45e47115b9a8f7372cc09ca8ad7793f9  herenow/site/Claim_Interlock_Product_Pack_v1.0.zip' | sha256sum -c -
-          test "$(stat -c '%s' herenow/site/Claim_Interlock_Product_Pack_v1.0.zip)" = '13644242'
           python3 - <<'PY'
+          import hashlib, urllib.request
           from pathlib import Path
-          p = Path('herenow/site/index.html')
-          s = p.read_text(encoding='utf-8')
+
+          url = 'https://drive.google.com/uc?export=download&id=15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b'
+          target = Path('herenow/site/Claim_Interlock_Product_Pack_v1.0.zip')
+          with urllib.request.urlopen(url, timeout=180) as response:
+              payload = response.read()
+          expected_size = 13644242
+          expected_sha = 'e0f1f116ec3e5eee3b0ed7e7a6dd905d45e47115b9a8f7372cc09ca8ad7793f9'
+          actual_sha = hashlib.sha256(payload).hexdigest()
+          if len(payload) != expected_size or actual_sha != expected_sha or not payload.startswith(b'PK\x03\x04'):
+              raise SystemExit(f'ZIP verification failed: size={len(payload)} sha256={actual_sha} magic={payload[:4]!r}')
+          target.write_bytes(payload)
+
+          index = Path('herenow/site/index.html')
+          html = index.read_text(encoding='utf-8')
           drive = 'https://drive.google.com/file/d/15xxmQdUia38ck3jiv8QKjUYX-6BsEF_b/view?usp=drivesdk'
-          s = s.replace(drive, './Claim_Interlock_Product_Pack_v1.0.zip')
-          s = s.replace('Open full ZIP in Drive →', 'Download full ZIP directly →')
-          s = s.replace('The public preview and MVP are served directly by here.now. The complete binary archive is mirrored in the owner’s Google Drive and may request sign-in until its Drive sharing policy is changed.', 'The complete 14 MB archive is hosted directly on this here.now site. No Google Drive or third-party sign-in is required.')
-          p.write_text(s, encoding='utf-8')
+          html = html.replace(drive, './Claim_Interlock_Product_Pack_v1.0.zip')
+          html = html.replace('Open full ZIP in Drive →', 'Download full ZIP directly →')
+          html = html.replace('The public preview and MVP are served directly by here.now. The complete binary archive is mirrored in the owner’s Google Drive and may request sign-in until its Drive sharing policy is changed.', 'The complete 14 MB archive is hosted directly on this here.now site. No Google Drive or third-party sign-in is required.')
+          index.write_text(html, encoding='utf-8')
+          print(f'Attached verified ZIP: {len(payload)} bytes, sha256={actual_sha}')
           PY
 
       - name: Publish anonymous here.now site
