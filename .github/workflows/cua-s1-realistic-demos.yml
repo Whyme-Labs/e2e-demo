@@ -1,0 +1,246 @@
+name: Publish CUA-S1 realistic workflow demos
+
+on:
+  push:
+    branches:
+      - codex/cua-s1-realistic-demos
+    paths:
+      - ".github/cua-s1-realistic-demo-overlay.b64.*"
+      - ".github/workflows/cua-s1-realistic-demos.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WORK: /tmp/cua-s1-realistic-demos
+      GH_TOKEN: ${{ github.token }}
+      SITE_SLUG: supple-glacier-pkbz
+      SITE_URL: https://supple-glacier-pkbz.here.now/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download verified official-model browser artifact
+        run: |
+          mkdir -p "$WORK/source"
+          gh run download 35425423741 \
+            --repo Whyme-Labs/e2e-demo \
+            --name cua-s1-official-browser-parity \
+            --dir "$WORK/source"
+          test -f "$WORK/source/web/model.bin"
+          test -f "$WORK/source/web/cua_s1.wasm"
+          test -f "$WORK/source/web/official_cases.json"
+          grep -q '"officialCheckpointUsed": true' "$WORK/source/node_results.json"
+          grep -q '"argmaxMismatches": 0' "$WORK/source/node_results.json"
+
+      - name: Recover existing anonymous deployment receipt
+        run: |
+          mkdir -p "$WORK/prior-receipt"
+          gh run download 35428390515 \
+            --repo Whyme-Labs/e2e-demo \
+            --name cua-s1-herenow-publish-receipt \
+            --dir "$WORK/prior-receipt"
+          test "$(jq -r '.slug' "$WORK/prior-receipt/publish-result.json")" = "$SITE_SLUG"
+          test "$(jq -r '.siteUrl' "$WORK/prior-receipt/publish-result.json")" = "$SITE_URL"
+          test "$(jq -r '.claimUrl' "$WORK/prior-receipt/publish-result.json")" != "null"
+
+      - name: Assemble realistic-demo site
+        run: |
+          mkdir -p "$WORK/site"
+          cp -a "$WORK/source/web/." "$WORK/site/"
+
+          curl -fsSL "${SITE_URL}worker.js" -o "$WORK/site/worker.js"
+          curl -fsSL "${SITE_URL}runtime.js" -o "$WORK/site/runtime.js"
+          curl -fsSL "${SITE_URL}app-manifest.json" -o "$WORK/site/app-manifest.json"
+          echo 'b7a5b93df98c6b14ed286b25482892d325d9c70de9e38234fd650267af0ca09a  /tmp/cua-s1-realistic-demos/site/worker.js' | sha256sum -c -
+          echo 'c261fb7a0005158b0b424ce1be02759f9f4d36c0e6d0d61238664a9828d148e5  /tmp/cua-s1-realistic-demos/site/runtime.js' | sha256sum -c -
+          echo '0eeedf5bbf79c225bc11d08353c8143139e6771a8517526e3d143b0aaa4f8edf  /tmp/cua-s1-realistic-demos/site/app-manifest.json' | sha256sum -c -
+
+          cat .github/cua-s1-realistic-demo-overlay.b64.* | tr -d '\r\n' | base64 --decode > "$WORK/realistic-demo-overlay.zip"
+          echo '72ceb028fa4e20e50eb5003389dbac14c2fda282320bb3b604f2a60a33df9af1  /tmp/cua-s1-realistic-demos/realistic-demo-overlay.zip' | sha256sum -c -
+          unzip -tq "$WORK/realistic-demo-overlay.zip"
+          unzip -oq "$WORK/realistic-demo-overlay.zip" -d "$WORK/site"
+
+          test -f "$WORK/site/index.html"
+          test -f "$WORK/site/app.js"
+          test -f "$WORK/site/styles.css"
+          test -f "$WORK/site/worker.js"
+          test -f "$WORK/site/runtime.js"
+          test -f "$WORK/site/app-manifest.json"
+          test -f "$WORK/site/model.bin"
+          test -f "$WORK/site/cua_s1.wasm"
+          test -f "$WORK/site/official_cases.json"
+          grep -q 'End to end workflow demos' "$WORK/site/index.html"
+          echo '1d5d88b9e5a45f914b9fe7589c1507c22f8b571a373cbc818d2af60239203c97  /tmp/cua-s1-realistic-demos/site/index.html' | sha256sum -c -
+          echo 'ced556037477572912aa76f9bbf77024816adb06b566b5fe7bd864be2b83ff13  /tmp/cua-s1-realistic-demos/site/app.js' | sha256sum -c -
+          echo '1ae5d6421e63a12bb915c9987796967c346501ebe2647abdbe412fbf8682af37  /tmp/cua-s1-realistic-demos/site/styles.css' | sha256sum -c -
+
+      - name: Install browser test dependency
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run end-to-end workflow demonstrations
+        run: |
+          mkdir -p "$WORK/screenshots"
+          python3 -m http.server 8765 --directory "$WORK/site" >"$WORK/http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          cat > "$WORK/test-realistic-demos.mjs" <<'EOF'
+          import fs from 'node:fs';
+          import { chromium } from 'playwright';
+
+          const output = process.env.WORK;
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage({ viewport: { width: 1500, height: 1100 }, deviceScaleFactor: 1 });
+          const pageErrors = [];
+          const failedRequests = [];
+          const externalRequests = [];
+          page.on('pageerror', (error) => pageErrors.push(String(error)));
+          page.on('requestfailed', (request) => failedRequests.push({ url: request.url(), error: request.failure()?.errorText || 'unknown' }));
+          page.on('request', (request) => {
+            const url = new URL(request.url());
+            if (url.hostname !== '127.0.0.1') externalRequests.push(request.url());
+          });
+
+          await page.goto('http://127.0.0.1:8765/#scenarios', { waitUntil: 'networkidle' });
+          await page.waitForFunction(() => {
+            const button = document.querySelector('#run-scenario');
+            return button && !button.disabled;
+          }, null, { timeout: 30000 });
+
+          const results = [];
+          async function runScenario({ id, mode, agreement, fill, check, skip, click, total }) {
+            await page.locator(`[data-scenario-id="${id}"]`).click();
+            await page.locator(`[data-scenario-mode="${mode}"]`).click();
+            await page.locator('#run-scenario').click();
+            await page.waitForFunction(() => document.querySelector('#scenario-run-state')?.textContent?.trim() === 'Plan ready for review', null, { timeout: 45000 });
+
+            const actual = await page.evaluate(() => ({
+              title: document.querySelector('#scenario-title')?.textContent?.trim(),
+              mode: document.querySelector('#scenario-form-state')?.textContent?.trim(),
+              agreement: document.querySelector('#scenario-agreement')?.textContent?.trim(),
+              fill: Number(document.querySelector('#scenario-fill-count')?.textContent),
+              check: Number(document.querySelector('#scenario-check-count')?.textContent),
+              skip: Number(document.querySelector('#scenario-skip-count')?.textContent),
+              click: Number(document.querySelector('#scenario-click-count')?.textContent),
+              rows: document.querySelectorAll('#scenario-decision-list .scenario-decision-row').length,
+              approvalGates: document.querySelectorAll('.is-approval-gated').length,
+              planVisible: !document.querySelector('#scenario-plan-results')?.hidden,
+            }));
+
+            const expected = { agreement, fill, check, skip, click, rows: total };
+            for (const [key, value] of Object.entries(expected)) {
+              if (actual[key] !== value) throw new Error(`${id}/${mode}: expected ${key}=${value}, got ${actual[key]}`);
+            }
+            if (!actual.planVisible) throw new Error(`${id}/${mode}: plan results are hidden`);
+            if (actual.approvalGates !== 1) throw new Error(`${id}/${mode}: expected one approval-gated click, got ${actual.approvalGates}`);
+
+            await page.screenshot({ path: `${output}/screenshots/${id}-${mode}.png`, fullPage: true });
+            results.push({ id, mode, ...actual });
+          }
+
+          await runScenario({ id: 'patient', mode: 'blank', agreement: '18/18', fill: 14, check: 1, skip: 2, click: 1, total: 18 });
+          await runScenario({ id: 'patient', mode: 'audit', agreement: '18/18', fill: 0, check: 0, skip: 17, click: 1, total: 18 });
+          await runScenario({ id: 'claim', mode: 'blank', agreement: '17/17', fill: 12, check: 1, skip: 3, click: 1, total: 17 });
+          await runScenario({ id: 'job', mode: 'blank', agreement: '15/15', fill: 10, check: 2, skip: 2, click: 1, total: 15 });
+
+          const report = {
+            schema: 'cua-s1-realistic-demo-e2e-v1',
+            complete: true,
+            userAgent: await page.evaluate(() => navigator.userAgent),
+            modelStatus: await page.locator('#model-status').innerText(),
+            results,
+            pageErrors,
+            failedRequests,
+            externalRequests,
+          };
+          fs.writeFileSync(`${output}/e2e-results.json`, JSON.stringify(report, null, 2));
+          await browser.close();
+
+          if (pageErrors.length) throw new Error(`Page errors: ${JSON.stringify(pageErrors)}`);
+          if (failedRequests.length) throw new Error(`Failed requests: ${JSON.stringify(failedRequests)}`);
+          if (externalRequests.length) throw new Error(`External inference or asset requests detected: ${JSON.stringify(externalRequests)}`);
+          console.log(JSON.stringify(report, null, 2));
+          EOF
+
+          WORK="$WORK" node "$WORK/test-realistic-demos.mjs"
+
+      - name: Publish updated site to existing here.now slug
+        id: publish
+        run: |
+          claim_url=$(jq -r '.claimUrl' "$WORK/prior-receipt/publish-result.json")
+          claim_token="${claim_url##*/}"
+          test -n "$claim_token"
+
+          curl -fsSL https://raw.githubusercontent.com/heredotnow/skill/main/here-now/scripts/publish.sh -o /tmp/herenow-publish.sh
+          chmod +x /tmp/herenow-publish.sh
+
+          set +e
+          /tmp/herenow-publish.sh "$WORK/site" \
+            --slug "$SITE_SLUG" \
+            --claim-token "$claim_token" \
+            --overwrite \
+            --client chatgpt/cua-s1-realistic-demos \
+            --title 'CUA-S1 Edge Lab' \
+            --description 'Browser-local CUA-S1 testing console with realistic patient intake, auto-claim, job-application, and completed-form audit demos.' \
+            2>&1 | tee "$WORK/publish.log"
+          publish_status=${PIPESTATUS[0]}
+          set -e
+          test "$publish_status" -eq 0
+
+          site_url=$(sed -n 's/^publish_result\.site_url=//p' "$WORK/publish.log" | tail -n 1)
+          slug=$(sed -n 's/^publish_result\.slug=//p' "$WORK/publish.log" | tail -n 1)
+          test "$site_url" = "$SITE_URL"
+          test "$slug" = "$SITE_SLUG"
+
+          jq -n \
+            --arg siteUrl "$site_url" \
+            --arg slug "$slug" \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg priorClaimUrl "$claim_url" \
+            '{schema:"cua-s1-realistic-demos-publish-v1",siteUrl:$siteUrl,slug:$slug,sourceSha:$sourceSha,claimUrl:$priorClaimUrl}' \
+            > "$WORK/publish-result.json"
+          echo "site_url=$site_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify live deployment bytes and UI
+        run: |
+          for attempt in {1..10}; do
+            if curl -fsS "$SITE_URL" -o "$WORK/live-index.html"; then
+              break
+            fi
+            sleep 2
+          done
+          grep -q 'End to end workflow demos' "$WORK/live-index.html"
+          curl -fsS "${SITE_URL}app.js" -o "$WORK/live-app.js"
+          curl -fsS "${SITE_URL}model.bin" -o "$WORK/live-model.bin"
+          curl -fsS "${SITE_URL}cua_s1.wasm" -o "$WORK/live-runtime.wasm"
+          test "$(sha256sum "$WORK/live-index.html" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/index.html" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-app.js" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/app.js" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-model.bin" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/model.bin" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-runtime.wasm" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/cua_s1.wasm" | cut -d' ' -f1)"
+
+      - name: Upload validation and deployment receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: cua-s1-realistic-demos-deployment
+          path: |
+            /tmp/cua-s1-realistic-demos/e2e-results.json
+            /tmp/cua-s1-realistic-demos/screenshots
+            /tmp/cua-s1-realistic-demos/publish-result.json
+            /tmp/cua-s1-realistic-demos/publish.log
+            /tmp/cua-s1-realistic-demos/source/node_results.json
+            /tmp/cua-s1-realistic-demos/realistic-demo-overlay.zip
+          retention-days: 7
+          if-no-files-found: error
