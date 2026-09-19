@@ -1,0 +1,50 @@
+name: Inspect live CUA-S1 index
+
+on:
+  push:
+    branches:
+      - codex/cua-s1-realistic-demos
+    paths:
+      - ".github/workflows/cua-s1-inspect-live-index.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      WORK: /tmp/cua-index-inspect
+      SITE_URL: https://supple-glacier-pkbz.here.now/
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and inspect root and index paths
+        run: |
+          mkdir -p "$WORK"
+          key="${GITHUB_SHA}-$(date +%s)"
+          curl -fsS -D "$WORK/root.headers" -H 'Cache-Control: no-cache, no-store' "${SITE_URL}?v=${key}" -o "$WORK/root.html"
+          curl -fsS -D "$WORK/index.headers" -H 'Cache-Control: no-cache, no-store' "${SITE_URL}index.html?v=${key}" -o "$WORK/index.html"
+          echo '--- root headers ---'
+          cat "$WORK/root.headers"
+          echo '--- index headers ---'
+          cat "$WORK/index.headers"
+          echo '--- hashes and sizes ---'
+          sha256sum "$WORK/root.html" "$WORK/index.html"
+          wc -c "$WORK/root.html" "$WORK/index.html"
+          echo '--- first 1200 bytes of root ---'
+          head -c 1200 "$WORK/root.html" | sed 's/</\n</g'
+          echo
+          echo '--- first 1200 bytes of index ---'
+          head -c 1200 "$WORK/index.html" | sed 's/</\n</g'
+          echo
+          echo '--- feature probes ---'
+          grep -n -E 'CUA-S1 Edge Lab|End to end workflow demos|scenario' "$WORK/root.html" | head -20 || true
+          grep -n -E 'CUA-S1 Edge Lab|End to end workflow demos|scenario' "$WORK/index.html" | head -20 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cua-s1-live-index-inspection
+          path: /tmp/cua-index-inspect
+          retention-days: 7
