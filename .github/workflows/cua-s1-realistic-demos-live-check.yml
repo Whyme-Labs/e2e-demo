@@ -1,0 +1,65 @@
+name: Check live CUA-S1 realistic demo bytes
+
+on:
+  push:
+    branches:
+      - codex/cua-s1-realistic-demos
+    paths:
+      - ".github/workflows/cua-s1-realistic-demos-live-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      WORK: /tmp/cua-s1-live-check
+      SITE_URL: https://supple-glacier-pkbz.here.now/
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify cache-busted deployed files
+        run: |
+          mkdir -p "$WORK"
+          key="${GITHUB_SHA}-$(date +%s)"
+          for attempt in {1..20}; do
+            curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}index.html?v=${key}-${attempt}" -o "$WORK/index.html" || true
+            curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}app.js?v=${key}-${attempt}" -o "$WORK/app.js" || true
+            index_hash=$(sha256sum "$WORK/index.html" 2>/dev/null | cut -d' ' -f1 || true)
+            app_hash=$(sha256sum "$WORK/app.js" 2>/dev/null | cut -d' ' -f1 || true)
+            if [[ "$index_hash" == '1d5d88b9e5a45f914b9fe7589c1507c22f8b571a373cbc818d2af60239203c97' && \
+                  "$app_hash" == 'ced556037477572912aa76f9bbf77024816adb06b566b5fe7bd864be2b83ff13' ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}model.bin?v=${key}" -o "$WORK/model.bin"
+          curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}cua_s1.wasm?v=${key}" -o "$WORK/cua_s1.wasm"
+
+          sha256sum "$WORK/index.html" "$WORK/app.js" "$WORK/model.bin" "$WORK/cua_s1.wasm"
+          grep -q 'End to end workflow demos' "$WORK/index.html"
+          test "$(sha256sum "$WORK/index.html" | cut -d' ' -f1)" = '1d5d88b9e5a45f914b9fe7589c1507c22f8b571a373cbc818d2af60239203c97'
+          test "$(sha256sum "$WORK/app.js" | cut -d' ' -f1)" = 'ced556037477572912aa76f9bbf77024816adb06b566b5fe7bd864be2b83ff13'
+          test "$(sha256sum "$WORK/model.bin" | cut -d' ' -f1)" = '73f370c957726b0fb65074f350ca37a4c10efd9e9b0f5f08f728d17645701284'
+          test "$(sha256sum "$WORK/cua_s1.wasm" | cut -d' ' -f1)" = '299f02be078ac3aaba33bf8545f9e65ce976bfabca3196fb00b5647bd8933211'
+
+          jq -n \
+            --arg siteUrl "$SITE_URL" \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg indexSha '1d5d88b9e5a45f914b9fe7589c1507c22f8b571a373cbc818d2af60239203c97' \
+            --arg appSha 'ced556037477572912aa76f9bbf77024816adb06b566b5fe7bd864be2b83ff13' \
+            --arg modelSha '73f370c957726b0fb65074f350ca37a4c10efd9e9b0f5f08f728d17645701284' \
+            --arg wasmSha '299f02be078ac3aaba33bf8545f9e65ce976bfabca3196fb00b5647bd8933211' \
+            '{schema:"cua-s1-realistic-live-check-v1",complete:true,siteUrl:$siteUrl,sourceSha:$sourceSha,indexSha256:$indexSha,appSha256:$appSha,modelSha256:$modelSha,wasmSha256:$wasmSha,scenarioValidation:{sourceRun:35431437324,patientBlank:"18/18",patientAudit:"18/18",claimBlank:"17/17",jobBlank:"15/15",externalInferenceCalls:0}}' \
+            > "$WORK/live-check.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cua-s1-realistic-live-check
+          path: /tmp/cua-s1-live-check/live-check.json
+          retention-days: 7
+          if-no-files-found: error
