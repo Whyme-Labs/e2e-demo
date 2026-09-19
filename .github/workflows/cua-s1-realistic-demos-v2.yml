@@ -1,0 +1,210 @@
+name: Publish validated CUA-S1 realistic demos
+
+on:
+  push:
+    branches:
+      - codex/cua-s1-realistic-demos
+    paths:
+      - ".github/workflows/cua-s1-realistic-demos-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WORK: /tmp/cua-s1-realistic-demos
+      GH_TOKEN: ${{ github.token }}
+      SITE_SLUG: supple-glacier-pkbz
+      SITE_URL: https://supple-glacier-pkbz.here.now/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Download verified model artifact and existing deployment receipt
+        run: |
+          mkdir -p "$WORK/source" "$WORK/prior-receipt"
+          gh run download 35425423741 \
+            --repo Whyme-Labs/e2e-demo \
+            --name cua-s1-official-browser-parity \
+            --dir "$WORK/source"
+          gh run download 35428390515 \
+            --repo Whyme-Labs/e2e-demo \
+            --name cua-s1-herenow-publish-receipt \
+            --dir "$WORK/prior-receipt"
+          test -f "$WORK/source/web/model.bin"
+          test -f "$WORK/source/web/cua_s1.wasm"
+          test -f "$WORK/source/web/official_cases.json"
+          grep -q '"officialCheckpointUsed": true' "$WORK/source/node_results.json"
+          grep -q '"argmaxMismatches": 0' "$WORK/source/node_results.json"
+          test "$(jq -r '.slug' "$WORK/prior-receipt/publish-result.json")" = "$SITE_SLUG"
+
+      - name: Assemble realistic-demo site
+        run: |
+          mkdir -p "$WORK/site"
+          cp -a "$WORK/source/web/." "$WORK/site/"
+          curl -fsSL "${SITE_URL}worker.js" -o "$WORK/site/worker.js"
+          curl -fsSL "${SITE_URL}runtime.js" -o "$WORK/site/runtime.js"
+          curl -fsSL "${SITE_URL}app-manifest.json" -o "$WORK/site/app-manifest.json"
+          echo 'b7a5b93df98c6b14ed286b25482892d325d9c70de9e38234fd650267af0ca09a  /tmp/cua-s1-realistic-demos/site/worker.js' | sha256sum -c -
+          echo 'c261fb7a0005158b0b424ce1be02759f9f4d36c0e6d0d61238664a9828d148e5  /tmp/cua-s1-realistic-demos/site/runtime.js' | sha256sum -c -
+          echo '0eeedf5bbf79c225bc11d08353c8143139e6771a8517526e3d143b0aaa4f8edf  /tmp/cua-s1-realistic-demos/site/app-manifest.json' | sha256sum -c -
+
+          cat .github/cua-s1-realistic-demo-overlay.b64.* | tr -d '\r\n' | base64 --decode > "$WORK/realistic-demo-overlay.zip"
+          echo '72ceb028fa4e20e50eb5003389dbac14c2fda282320bb3b604f2a60a33df9af1  /tmp/cua-s1-realistic-demos/realistic-demo-overlay.zip' | sha256sum -c -
+          unzip -tq "$WORK/realistic-demo-overlay.zip"
+          unzip -oq "$WORK/realistic-demo-overlay.zip" -d "$WORK/site"
+
+          grep -q 'End to end workflow demos' "$WORK/site/index.html"
+          echo '1d5d88b9e5a45f914b9fe7589c1507c22f8b571a373cbc818d2af60239203c97  /tmp/cua-s1-realistic-demos/site/index.html' | sha256sum -c -
+          echo 'ced556037477572912aa76f9bbf77024816adb06b566b5fe7bd864be2b83ff13  /tmp/cua-s1-realistic-demos/site/app.js' | sha256sum -c -
+          echo '1ae5d6421e63a12bb915c9987796967c346501ebe2647abdbe412fbf8682af37  /tmp/cua-s1-realistic-demos/site/styles.css' | sha256sum -c -
+
+      - name: Validate all realistic workflow decisions locally
+        run: |
+          python3 -m http.server 8765 --directory "$WORK/site" >"$WORK/http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          cp "$WORK/site/runtime.js" "$WORK/runtime.mjs"
+
+          cat > "$WORK/validate-scenarios.mjs" <<'EOF'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+
+          const root = process.env.WORK;
+          const { CuaS1BrowserRuntime } = await import(pathToFileURL(`${root}/runtime.mjs`));
+          const runtime = await CuaS1BrowserRuntime.load({
+            wasmUrl: 'http://127.0.0.1:8765/cua_s1.wasm',
+            modelUrl: 'http://127.0.0.1:8765/model.bin',
+            manifestUrl: 'http://127.0.0.1:8765/model.json',
+          });
+          const cases = await fetch('http://127.0.0.1:8765/official_cases.json').then((response) => response.json());
+          const byId = new Map(cases.map((item) => [Number(item.id), item]));
+
+          const specs = [
+            { id: 'patient', mode: 'blank', ids: Array.from({ length: 18 }, (_, i) => i), expected: { fill: 14, check: 1, skip: 2, click: 1 } },
+            { id: 'patient', mode: 'audit', ids: Array.from({ length: 18 }, (_, i) => i + 34), expected: { fill: 0, check: 0, skip: 17, click: 1 } },
+            { id: 'claim', mode: 'blank', ids: Array.from({ length: 17 }, (_, i) => i + 130), expected: { fill: 12, check: 1, skip: 3, click: 1 } },
+            { id: 'job', mode: 'blank', ids: Array.from({ length: 15 }, (_, i) => i + 68), expected: { fill: 10, check: 2, skip: 2, click: 1 } },
+          ];
+
+          const results = [];
+          for (const spec of specs) {
+            const counts = { fill: 0, check: 0, skip: 0, click: 0 };
+            let correct = 0;
+            let elapsedMs = 0;
+            for (const caseId of spec.ids) {
+              const item = byId.get(caseId);
+              if (!item) throw new Error(`Missing official case ${caseId}`);
+              const result = runtime.predict(item.context, item.options);
+              const action = String(result.selectedOption).split(/\s+/, 1)[0].toLowerCase();
+              if (!(action in counts)) throw new Error(`Unexpected action ${action} for case ${caseId}`);
+              counts[action] += 1;
+              correct += Number(result.selectedIndex === item.label);
+              elapsedMs += result.elapsedMs;
+            }
+            if (correct !== spec.ids.length) throw new Error(`${spec.id}/${spec.mode}: ${correct}/${spec.ids.length} label agreement`);
+            for (const [action, expected] of Object.entries(spec.expected)) {
+              if (counts[action] !== expected) throw new Error(`${spec.id}/${spec.mode}: expected ${action}=${expected}, got ${counts[action]}`);
+            }
+            results.push({
+              id: spec.id,
+              mode: spec.mode,
+              decisions: spec.ids.length,
+              agreement: `${correct}/${spec.ids.length}`,
+              counts,
+              meanLatencyMs: elapsedMs / spec.ids.length,
+            });
+          }
+
+          const report = {
+            schema: 'cua-s1-realistic-demo-validation-v1',
+            complete: true,
+            officialCheckpointUsed: true,
+            inferenceLocation: 'local-node-webassembly',
+            externalInferenceCalls: 0,
+            results,
+          };
+          fs.writeFileSync(`${root}/scenario-validation.json`, JSON.stringify(report, null, 2));
+          console.log(JSON.stringify(report, null, 2));
+          EOF
+
+          WORK="$WORK" node "$WORK/validate-scenarios.mjs"
+
+      - name: Capture realistic-demo interface
+        run: |
+          mkdir -p "$WORK/screenshots"
+          python3 -m http.server 8766 --directory "$WORK/site" >"$WORK/http-screenshot.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          CHROME_BIN=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          if [[ -n "$CHROME_BIN" ]]; then
+            "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu \
+              --window-size=1500,1100 --virtual-time-budget=8000 \
+              --screenshot="$WORK/screenshots/realistic-scenarios.png" \
+              'http://127.0.0.1:8766/#scenarios'
+          else
+            echo 'System Chrome unavailable; semantic validation remains authoritative.' > "$WORK/screenshots/README.txt"
+          fi
+
+      - name: Publish updated site to existing here.now slug
+        run: |
+          claim_url=$(jq -r '.claimUrl' "$WORK/prior-receipt/publish-result.json")
+          claim_token="${claim_url##*/}"
+          curl -fsSL https://raw.githubusercontent.com/heredotnow/skill/main/here-now/scripts/publish.sh -o /tmp/herenow-publish.sh
+          chmod +x /tmp/herenow-publish.sh
+
+          /tmp/herenow-publish.sh "$WORK/site" \
+            --slug "$SITE_SLUG" \
+            --claim-token "$claim_token" \
+            --overwrite \
+            --client chatgpt/cua-s1-realistic-demos \
+            --title 'CUA-S1 Edge Lab' \
+            --description 'Browser-local CUA-S1 testing console with patient intake, auto-claim, job-application, and completed-form audit demos.' \
+            2>&1 | tee "$WORK/publish.log"
+
+          site_url=$(sed -n 's/^publish_result\.site_url=//p' "$WORK/publish.log" | tail -n 1)
+          test "$site_url" = "$SITE_URL"
+          jq -n \
+            --arg siteUrl "$site_url" \
+            --arg slug "$SITE_SLUG" \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg claimUrl "$claim_url" \
+            '{schema:"cua-s1-realistic-demos-publish-v1",siteUrl:$siteUrl,slug:$slug,sourceSha:$sourceSha,claimUrl:$claimUrl}' \
+            > "$WORK/publish-result.json"
+
+      - name: Verify live deployment bytes and UI
+        run: |
+          for attempt in {1..10}; do
+            curl -fsS "$SITE_URL" -o "$WORK/live-index.html" && break
+            sleep 2
+          done
+          grep -q 'End to end workflow demos' "$WORK/live-index.html"
+          curl -fsS "${SITE_URL}app.js" -o "$WORK/live-app.js"
+          curl -fsS "${SITE_URL}model.bin" -o "$WORK/live-model.bin"
+          curl -fsS "${SITE_URL}cua_s1.wasm" -o "$WORK/live-runtime.wasm"
+          test "$(sha256sum "$WORK/live-index.html" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/index.html" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-app.js" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/app.js" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-model.bin" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/model.bin" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-runtime.wasm" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/cua_s1.wasm" | cut -d' ' -f1)"
+
+      - name: Upload validation and deployment receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: cua-s1-realistic-demos-deployment
+          path: |
+            /tmp/cua-s1-realistic-demos/scenario-validation.json
+            /tmp/cua-s1-realistic-demos/screenshots
+            /tmp/cua-s1-realistic-demos/publish-result.json
+            /tmp/cua-s1-realistic-demos/publish.log
+            /tmp/cua-s1-realistic-demos/source/node_results.json
+            /tmp/cua-s1-realistic-demos/realistic-demo-overlay.zip
+          retention-days: 7
+          if-no-files-found: error
