@@ -1,0 +1,143 @@
+name: Verify live CUA-S1 realistic demos
+
+on:
+  push:
+    branches:
+      - codex/cua-s1-realistic-demos
+    paths:
+      - ".github/workflows/cua-s1-realistic-demos-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      WORK: /tmp/cua-s1-realistic-verify
+      GH_TOKEN: ${{ github.token }}
+      SITE_URL: https://supple-glacier-pkbz.here.now/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Reconstruct expected deployed site
+        run: |
+          mkdir -p "$WORK/source" "$WORK/site"
+          gh run download 35425423741 \
+            --repo Whyme-Labs/e2e-demo \
+            --name cua-s1-official-browser-parity \
+            --dir "$WORK/source"
+          cp -a "$WORK/source/web/." "$WORK/site/"
+          curl -fsSL "${SITE_URL}worker.js?baseline=1" -o "$WORK/site/worker.js"
+          curl -fsSL "${SITE_URL}runtime.js?baseline=1" -o "$WORK/site/runtime.js"
+          curl -fsSL "${SITE_URL}app-manifest.json?baseline=1" -o "$WORK/site/app-manifest.json"
+          cat .github/cua-s1-realistic-demo-overlay.b64.* | tr -d '\r\n' | base64 --decode > "$WORK/overlay.zip"
+          echo '72ceb028fa4e20e50eb5003389dbac14c2fda282320bb3b604f2a60a33df9af1  /tmp/cua-s1-realistic-verify/overlay.zip' | sha256sum -c -
+          unzip -oq "$WORK/overlay.zip" -d "$WORK/site"
+          grep -q 'End to end workflow demos' "$WORK/site/index.html"
+
+      - name: Revalidate scenario model decisions
+        run: |
+          python3 -m http.server 8770 --directory "$WORK/site" >"$WORK/http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          cp "$WORK/site/runtime.js" "$WORK/runtime.mjs"
+          cat > "$WORK/validate.mjs" <<'EOF'
+          import fs from 'node:fs';
+          import { pathToFileURL } from 'node:url';
+          const root = process.env.WORK;
+          const { CuaS1BrowserRuntime } = await import(pathToFileURL(`${root}/runtime.mjs`));
+          const runtime = await CuaS1BrowserRuntime.load({
+            wasmUrl: 'http://127.0.0.1:8770/cua_s1.wasm',
+            modelUrl: 'http://127.0.0.1:8770/model.bin',
+            manifestUrl: 'http://127.0.0.1:8770/model.json',
+          });
+          const cases = await fetch('http://127.0.0.1:8770/official_cases.json').then(r => r.json());
+          const byId = new Map(cases.map(x => [Number(x.id), x]));
+          const specs = [
+            ['patient','blank',Array.from({length:18},(_,i)=>i),{fill:14,check:1,skip:2,click:1}],
+            ['patient','audit',Array.from({length:18},(_,i)=>i+34),{fill:0,check:0,skip:17,click:1}],
+            ['claim','blank',Array.from({length:17},(_,i)=>i+130),{fill:12,check:1,skip:3,click:1}],
+            ['job','blank',Array.from({length:15},(_,i)=>i+68),{fill:10,check:2,skip:2,click:1}],
+          ];
+          const results=[];
+          for (const [id,mode,ids,expected] of specs) {
+            const counts={fill:0,check:0,skip:0,click:0};
+            let correct=0, elapsed=0;
+            for (const caseId of ids) {
+              const item=byId.get(caseId);
+              const prediction=runtime.predict(item.context,item.options);
+              const action=String(prediction.selectedOption).split(/\s+/,1)[0].toLowerCase();
+              counts[action]+=1;
+              correct+=Number(prediction.selectedIndex===item.label);
+              elapsed+=prediction.elapsedMs;
+            }
+            if (correct!==ids.length) throw new Error(`${id}/${mode}: ${correct}/${ids.length}`);
+            for (const [action,value] of Object.entries(expected)) {
+              if (counts[action]!==value) throw new Error(`${id}/${mode}: ${action}=${counts[action]} expected ${value}`);
+            }
+            results.push({id,mode,decisions:ids.length,agreement:`${correct}/${ids.length}`,counts,meanLatencyMs:elapsed/ids.length});
+          }
+          const report={schema:'cua-s1-realistic-demo-validation-v1',complete:true,officialCheckpointUsed:true,externalInferenceCalls:0,results};
+          fs.writeFileSync(`${root}/scenario-validation.json`,JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+          EOF
+          WORK="$WORK" node "$WORK/validate.mjs"
+
+      - name: Capture live interface
+        run: |
+          mkdir -p "$WORK/screenshots"
+          CHROME_BIN=$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)
+          if [[ -n "$CHROME_BIN" ]]; then
+            "$CHROME_BIN" --headless=new --no-sandbox --disable-gpu \
+              --window-size=1500,1100 --virtual-time-budget=8000 \
+              --screenshot="$WORK/screenshots/live-realistic-scenarios.png" \
+              "${SITE_URL}?verify=${GITHUB_SHA}#scenarios"
+          else
+            echo 'System Chrome unavailable.' > "$WORK/screenshots/README.txt"
+          fi
+
+      - name: Verify cache-busted live bytes
+        run: |
+          cache_key="verify-${GITHUB_SHA}-$(date +%s)"
+          for attempt in {1..12}; do
+            curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}?v=${cache_key}-${attempt}" -o "$WORK/live-index.html" || true
+            curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}app.js?v=${cache_key}-${attempt}" -o "$WORK/live-app.js" || true
+            if grep -q 'End to end workflow demos' "$WORK/live-index.html" 2>/dev/null && \
+               [[ "$(sha256sum "$WORK/live-index.html" | cut -d' ' -f1)" == "$(sha256sum "$WORK/site/index.html" | cut -d' ' -f1)" ]] && \
+               [[ "$(sha256sum "$WORK/live-app.js" | cut -d' ' -f1)" == "$(sha256sum "$WORK/site/app.js" | cut -d' ' -f1)" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          echo "expected index $(sha256sum "$WORK/site/index.html" | cut -d' ' -f1)"
+          echo "live index     $(sha256sum "$WORK/live-index.html" | cut -d' ' -f1)"
+          echo "expected app   $(sha256sum "$WORK/site/app.js" | cut -d' ' -f1)"
+          echo "live app       $(sha256sum "$WORK/live-app.js" | cut -d' ' -f1)"
+          grep -q 'End to end workflow demos' "$WORK/live-index.html"
+          test "$(sha256sum "$WORK/live-index.html" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/index.html" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-app.js" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/app.js" | cut -d' ' -f1)"
+          curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}model.bin?v=${cache_key}" -o "$WORK/live-model.bin"
+          curl -fsS -H 'Cache-Control: no-cache, no-store' "${SITE_URL}cua_s1.wasm?v=${cache_key}" -o "$WORK/live-runtime.wasm"
+          test "$(sha256sum "$WORK/live-model.bin" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/model.bin" | cut -d' ' -f1)"
+          test "$(sha256sum "$WORK/live-runtime.wasm" | cut -d' ' -f1)" = "$(sha256sum "$WORK/site/cua_s1.wasm" | cut -d' ' -f1)"
+          jq -n --arg siteUrl "$SITE_URL" --arg sourceSha "$GITHUB_SHA" '{schema:"cua-s1-realistic-demos-live-verification-v1",complete:true,siteUrl:$siteUrl,sourceSha:$sourceSha}' > "$WORK/live-verification.json"
+
+      - name: Upload verified deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cua-s1-realistic-demos-verified
+          path: |
+            /tmp/cua-s1-realistic-verify/scenario-validation.json
+            /tmp/cua-s1-realistic-verify/live-verification.json
+            /tmp/cua-s1-realistic-verify/screenshots
+            /tmp/cua-s1-realistic-verify/overlay.zip
+          retention-days: 7
+          if-no-files-found: error
